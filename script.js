@@ -2,7 +2,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const $ = (id) => document.getElementById(id);
 
   /* =========================
-     SONS (COMPORTAMENTO ORIGINAL)
+     SONS (REGRAS DEFINITIVAS)
+     ✔️ confirmar venda
+     🗑️ reset total
+     🔉 som só no `−` quando remover um balde
   ========================== */
   const plusSound = $("plusSound");
   const minusSound = $("minusSound");
@@ -21,6 +24,24 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!soundOn || !audio) return;
     audio.currentTime = 0;
     audio.play().catch(() => {});
+  };
+
+  const playMinusSound = () => {
+    if (!soundOn || !minusSound) return;
+    minusSound.currentTime = 0;
+    minusSound.play().catch(() => {});
+  };
+
+  const playConfirmSound = () => {
+    if (!soundOn || !plusSound) return;
+    plusSound.currentTime = 0;
+    plusSound.play().catch(() => {});
+  };
+
+  const playResetSound = () => {
+    if (!soundOn || !trashSound) return;
+    trashSound.currentTime = 0;
+    trashSound.play().catch(() => {});
   };
 
   /* =========================
@@ -117,7 +138,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const currentYear = () => new Date().getFullYear();
 
   /* =========================
-     RENDER
+     RENDER PEOPLE
   ========================== */
   function renderPeople() {
     const list = $("peopleList");
@@ -155,7 +176,6 @@ document.addEventListener("DOMContentLoaded", () => {
       addB.onclick = () => {
         if (!p.beers.some((x) => x.name === sel.value)) {
           p.beers.push({ name: sel.value, pending: 0, confirmed: 0 });
-          safePlay(plusSound);
           save();
           renderPeople();
         }
@@ -176,7 +196,6 @@ document.addEventListener("DOMContentLoaded", () => {
         plus.className = "btn-plus";
         plus.onclick = () => {
           b.pending++;
-          safePlay(plusSound);
           save();
           renderPeople();
         };
@@ -188,7 +207,7 @@ document.addEventListener("DOMContentLoaded", () => {
           if (!confirm("Remover 1 item?")) return;
           if (b.pending > 0) b.pending--;
           else if (b.confirmed > 0) b.confirmed--;
-          safePlay(minusSound);
+          playMinusSound(); // 🔊 Som só ao remover 1 balde
           save();
           renderPeople();
         };
@@ -209,7 +228,7 @@ document.addEventListener("DOMContentLoaded", () => {
             qty
           });
 
-          safePlay(plusSound);
+          playConfirmSound(); // 🔊 Som de confirmação
           save();
           renderPeople();
         };
@@ -220,7 +239,6 @@ document.addEventListener("DOMContentLoaded", () => {
         del.onclick = () => {
           if (!confirm("Excluir este item?")) return;
           p.beers.splice(i, 1);
-          safePlay(trashSound);
           save();
           renderPeople();
         };
@@ -234,6 +252,9 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  /* =========================
+     HISTÓRICO SIMPLES (SITE)
+  ========================== */
   function renderHistory() {
     const section = $("historySection");
     if (section.classList.contains("hidden")) return;
@@ -272,10 +293,11 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /* =========================
-     WHATSAPP
+     WHATSAPP (DETALHADO)
   ========================== */
   function buildWhatsappReport() {
     const year = currentYear();
+
     const logs = state.logs
       .map((x) => ({ ...x, dayKey: businessDateKey(x.ts) }))
       .filter((x) => Number(x.dayKey.slice(0, 4)) === year)
@@ -287,9 +309,36 @@ document.addEventListener("DOMContentLoaded", () => {
       byDay.get(e.dayKey).push(e);
     });
 
-    let msg = `*Relatório de Vendas*\nAno: *${year}*\n\n`;
-    const days = [...byDay.keys()].sort();
+    let msg = `*Relatório de Vendas*\n\n`;
+    msg += `*Total geral:* ${logs.reduce((s, e) => s + (e.qty || 0), 0)}\n\n`;
 
+    // Resumo por item
+    msg += `*Resumo por item*\n`;
+    const porItem = new Map();
+    logs.forEach((e) => {
+      porItem.set(e.item, (porItem.get(e.item) || 0) + e.qty);
+    });
+    [...porItem.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .forEach(([item, qty]) => {
+        msg += `• ${item}: ${qty}\n`;
+      });
+
+    // Resumo por pessoa
+    msg += `\n*Resumo por pessoa*\n`;
+    const porPessoa = new Map();
+    logs.forEach((e) => {
+      porPessoa.set(e.person, (porPessoa.get(e.person) || 0) + e.qty);
+    });
+    [...porPessoa.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .forEach(([name, qty]) => {
+        msg += `• ${name}: ${qty}\n`;
+      });
+
+    // Detalhe por dia (dia comercial)
+    msg += `\n*Detalhado por dia*\n\n`;
+    const days = [...byDay.keys()].sort();
     if (!days.length) {
       msg += `*${formatDateBR(businessDateKey(Date.now()))}*\n`;
     } else {
@@ -298,7 +347,15 @@ document.addEventListener("DOMContentLoaded", () => {
         byDay.get(d).forEach((e) => {
           msg += `- ${formatTimeBR(e.ts)} • ${e.person} • ${e.item} x${e.qty}\n`;
         });
-        msg += "\n";
+        msg += `\n`;
+      });
+    }
+
+    // Observações
+    if (state.obs.length) {
+      msg += `*Observações*\n`;
+      state.obs.forEach((o) => {
+        msg += `• ${o.text} (${o.time})\n`;
       });
     }
 
@@ -335,7 +392,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!confirm("Apagar TODOS os dados?")) return;
     state = { people: [], obs: [], logs: [] };
     save();
-    safePlay(trashSound);
+    playResetSound(); // 🔊 Som do reset total
     renderAll();
   };
 
@@ -344,9 +401,6 @@ document.addEventListener("DOMContentLoaded", () => {
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
-  /* =========================
-     OBS COLLAPSIBLE
-  ========================== */
   $("obsHeader").onclick = () => $("obsBody").classList.toggle("show");
 
   renderAll();
