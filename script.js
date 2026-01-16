@@ -3,9 +3,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   /* =========================
      SONS (REGRAS DEFINITIVAS)
-     ✔️ confirmar venda
-     🗑️ reset total
-     🔉 som só no `−` quando remover um balde
+     🔊 Som ao remover balde (`−`)
+     🔊 Som ao confirmar venda (`✔️`)
+     🗑️ Som de reset total (apagar histórico)
   ========================== */
   const plusSound = $("plusSound");
   const minusSound = $("minusSound");
@@ -207,7 +207,7 @@ document.addEventListener("DOMContentLoaded", () => {
           if (!confirm("Remover 1 item?")) return;
           if (b.pending > 0) b.pending--;
           else if (b.confirmed > 0) b.confirmed--;
-          playMinusSound(); // 🔊 Som só ao remover 1 balde
+          playMinusSound(); // 🔊 Som ao remover 1 balde
           save();
           renderPeople();
         };
@@ -294,10 +294,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   /* =========================
      WHATSAPP (DETALHADO)
+     GERAR O RELATÓRIO
   ========================== */
   function buildWhatsappReport() {
     const year = currentYear();
 
+    // Filtra logs do ano
     const logs = state.logs
       .map((x) => ({ ...x, dayKey: businessDateKey(x.ts) }))
       .filter((x) => Number(x.dayKey.slice(0, 4)) === year)
@@ -309,36 +311,42 @@ document.addEventListener("DOMContentLoaded", () => {
       byDay.get(e.dayKey).push(e);
     });
 
-    let msg = `*Relatório de Vendas*\n\n`;
-    msg += `*Total geral:* ${logs.reduce((s, e) => s + (e.qty || 0), 0)}\n\n`;
+    let totalGeral = 0;
+    const porPessoa = new Map(); // nome -> qty
+    const porItem = new Map();   // item -> qty
 
-    // Resumo por item
-    msg += `*Resumo por item*\n`;
-    const porItem = new Map();
     logs.forEach((e) => {
+      totalGeral += e.qty;
+      porPessoa.set(e.person, (porPessoa.get(e.person) || 0) + e.qty);
       porItem.set(e.item, (porItem.get(e.item) || 0) + e.qty);
     });
-    [...porItem.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .forEach(([item, qty]) => {
-        msg += `• ${item}: ${qty}\n`;
-      });
+
+    // Gerar relatório
+    let msg = `*Extrato do dia (vendas confirmadas)*\n`;
+    msg += `Começo da venda e fim: *${formatTimeBR(logs[0].ts)}–${formatTimeBR(logs[logs.length - 1].ts)}*\n`;
+    msg += `Total geral: *${totalGeral}*\n\n`;
 
     // Resumo por pessoa
-    msg += `\n*Resumo por pessoa*\n`;
-    const porPessoa = new Map();
-    logs.forEach((e) => {
-      porPessoa.set(e.person, (porPessoa.get(e.person) || 0) + e.qty);
-    });
+    msg += `*Resumo por pessoa*\n`;
     [...porPessoa.entries()]
       .sort((a, b) => b[1] - a[1])
       .forEach(([name, qty]) => {
         msg += `• ${name}: ${qty}\n`;
       });
 
-    // Detalhe por dia (dia comercial)
-    msg += `\n*Detalhado por dia*\n\n`;
+    // Resumo por item
+    msg += `\n*Resumo por item*\n`;
+    [...porItem.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .forEach(([item, qty]) => {
+        msg += `• ${item}: ${qty}\n`;
+      });
+
+    // Detalhado por dia comercial (por data)
+    msg += `\n*Detalhado (por dia comercial)*\n`;
+
     const days = [...byDay.keys()].sort();
+
     if (!days.length) {
       msg += `*${formatDateBR(businessDateKey(Date.now()))}*\n`;
     } else {
@@ -353,7 +361,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Observações
     if (state.obs.length) {
-      msg += `*Observações*\n`;
+      msg += `\n*Observações*\n`;
       state.obs.forEach((o) => {
         msg += `• ${o.text} (${o.time})\n`;
       });
@@ -392,7 +400,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!confirm("Apagar TODOS os dados?")) return;
     state = { people: [], obs: [], logs: [] };
     save();
-    playResetSound(); // 🔊 Som do reset total
+    playResetSound(); // 🔊 Som de reset total
     renderAll();
   };
 
