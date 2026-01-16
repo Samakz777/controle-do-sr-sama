@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  />
+  <title>Controle de Baldes</title>
+
+  <link rel="stylesheet" href="style.css" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon.png" />
+</head>
+
+<body>
+  <header>
+    <h1>Controle de Baldes</h1>
+    <div class="actions">
+      <button id="toggleTheme" title="Tema">🌙</button>
+      <button id="historyToggle" title="Resumo / Detalhado">📜</button>
+      <button id="soundToggle" title="Som">🔈</button>
+      <button id="resetAll" title="Apagar tudo">🗑️</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- ADICIONAR PESSOA -->
+    <section id="addPersonSection">
+      <input
+        id="personName"
+        placeholder="Nome da pessoa"
+        autocomplete="off"
+      />
+      <button id="addPerson">Adicionar</button>
+    </section>
+
+    <!-- LISTA DE PESSOAS -->
+    <section id="peopleList"></section>
+
+    <!-- HISTÓRICO / RELATÓRIO -->
+    <section id="historySection">
+      <h2>Histórico</h2>
+      <div id="historyList"></div>
+    </section>
+
+    <!-- OBSERVAÇÕES -->
+    <section id="obsSection">
+      <div id="obsHeader" class="collapsible-header">
+        Observações
+      </div>
+      <div id="obsBody" class="collapsible-body">
+        <textarea
+          id="obsText"
+          placeholder="Digite uma observação"
+        ></textarea>
+        <button id="addObs">Adicionar</button>
+        <ul id="obsList"></ul>
+      </div>
+    </section>
+
+    <!-- COMPARTILHAR -->
+    <button id="shareWA" class="btn-share">
+      📤 Compartilhar no WhatsApp
+    </button>
+  </main>
+
+  <!-- ÁUDIOS -->
+  <audio id="plusSound" src="plus.mp3" preload="auto"></audio>
+  <audio id="minusSound" src="minus.mp3" preload="auto"></audio>
+  <audio id="resetSound" src="trash.mp3" preload="auto"></audio>
+
+  <!-- SCRIPT -->
+  <script src="script.js" defer></script>
+
+  <!-- SERVICE WORKER -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+  </script>
+</body>
+</html>
