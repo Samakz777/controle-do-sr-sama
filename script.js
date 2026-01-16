@@ -53,16 +53,15 @@ document.addEventListener("DOMContentLoaded", () => {
       try {
         state = JSON.parse(raw);
       } catch {
-        // se corromper, reseta seguro
         state = { people: [], obs: [], logs: [] };
       }
     }
-    // compatibilidade: garante arrays
+
     state.people = Array.isArray(state.people) ? state.people : [];
     state.obs = Array.isArray(state.obs) ? state.obs : [];
     state.logs = Array.isArray(state.logs) ? state.logs : [];
 
-    // 🔧 remove "demo" antigo se existir (ex.: um único "igor" vazio)
+    // remove possível "demo" antigo (ex.: "igor" sozinho e vazio)
     const onlyOne =
       state.people.length === 1 &&
       typeof state.people[0]?.name === "string" &&
@@ -109,8 +108,8 @@ document.addEventListener("DOMContentLoaded", () => {
   ];
 
   /* =========================
-     UTIL: "DIA COMERCIAL" (madrugada conta no dia anterior)
-     - corte padrão: 06:00
+     UTIL: "DIA" (madrugada conta no dia anterior)
+     - regra interna (não aparece no relatório)
   ========================== */
   const CUTOFF_HOUR = 6;
 
@@ -122,7 +121,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const yyyy = shifted.getFullYear();
     const mm = String(shifted.getMonth() + 1).padStart(2, "0");
     const dd = String(shifted.getDate()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}`; // chave estável
+    return `${yyyy}-${mm}-${dd}`;
   };
 
   const formatDateBR = (yyyy_mm_dd) => {
@@ -146,25 +145,26 @@ document.addEventListener("DOMContentLoaded", () => {
     const list = $("peopleList");
     list.innerHTML = "";
 
-    state.people.forEach((p, pidx) => {
+    state.people.forEach((p) => {
       const wrap = document.createElement("div");
       wrap.className = "person";
 
       const head = document.createElement("div");
       head.className = "person-header";
+
       const h3 = document.createElement("h3");
       h3.textContent = (p.open ? "▼ " : "▶ ") + p.name;
       head.appendChild(h3);
+
+      const body = document.createElement("div");
+      body.className = "person-body";
+      if (!p.open) body.classList.add("hidden");
+
       head.onclick = () => {
         p.open = !p.open;
         save();
         renderPeople();
       };
-      wrap.appendChild(head);
-
-      const body = document.createElement("div");
-      body.className = "person-body";
-      if (!p.open) body.classList.add("hidden");
 
       const selWrap = document.createElement("div");
       selWrap.className = "select-wrapper";
@@ -180,6 +180,7 @@ document.addEventListener("DOMContentLoaded", () => {
       addB.textContent = "Adicionar";
       addB.className = "btn-plus";
       addB.onclick = () => {
+        p.beers = Array.isArray(p.beers) ? p.beers : [];
         if (!p.beers.some((x) => x.name === sel.value)) {
           p.beers.push({ name: sel.value, pending: 0, confirmed: 0 });
           save();
@@ -190,7 +191,7 @@ document.addEventListener("DOMContentLoaded", () => {
       selWrap.append(sel, addB);
       body.appendChild(selWrap);
 
-      p.beers.forEach((b, bidx) => {
+      (p.beers || []).forEach((b, bidx) => {
         const line = document.createElement("div");
         line.className = "beer";
         line.innerHTML = `
@@ -203,7 +204,7 @@ document.addEventListener("DOMContentLoaded", () => {
         plus.textContent = "+";
         plus.className = "btn-plus";
         plus.onclick = () => {
-          b.pending++;
+          b.pending = (b.pending || 0) + 1;
           save();
           renderPeople();
           renderHistory();
@@ -214,8 +215,8 @@ document.addEventListener("DOMContentLoaded", () => {
         minus.className = "btn-minus";
         minus.onclick = () => {
           if (!confirm("Remover 1 item?")) return;
-          if (b.pending > 0) b.pending--;
-          else if (b.confirmed > 0) b.confirmed--;
+          if ((b.pending || 0) > 0) b.pending--;
+          else if ((b.confirmed || 0) > 0) b.confirmed--;
           navigator.vibrate?.(100);
           save();
           renderPeople();
@@ -226,14 +227,12 @@ document.addEventListener("DOMContentLoaded", () => {
         conf.textContent = "✔️";
         conf.className = "btn-plus";
         conf.onclick = () => {
-          const moved = b.pending;
+          const moved = b.pending || 0;
           if (moved <= 0) return;
 
-          // move contadores
-          b.confirmed += moved;
+          b.confirmed = (b.confirmed || 0) + moved;
           b.pending = 0;
 
-          // grava no "banco" (logs)
           const ts = Date.now();
           state.logs.push({
             ts,
@@ -242,7 +241,7 @@ document.addEventListener("DOMContentLoaded", () => {
             qty: moved
           });
 
-          // SOM APENAS AQUI ✅
+          // SOM APENAS AO CONFIRMAR ✅
           playConfirmSound();
 
           save();
@@ -270,19 +269,19 @@ document.addEventListener("DOMContentLoaded", () => {
         body.appendChild(line);
       });
 
+      wrap.appendChild(head);
       wrap.appendChild(body);
       list.appendChild(wrap);
     });
   }
 
+  // Site simplificado: só resumo por pessoa
   function renderHistory() {
     const section = $("historySection");
     const div = $("historyList");
 
-    // só renderiza se estiver visível
     if (section.classList.contains("hidden")) return;
 
-    // resumo simples no site (simplificado)
     const arr = state.people
       .map((p) => ({
         name: p.name,
@@ -318,86 +317,51 @@ document.addEventListener("DOMContentLoaded", () => {
 
   /* =========================
      RELATÓRIO DETALHADO (SOMENTE WHATSAPP)
-     - inclui data/hora da confirmação
-     - extrato anual (ano atual) com "dia comercial"
+     - por DIA
+     - com horário real da confirmação
+     - sem textos extras
   ========================== */
   function buildWhatsappReport() {
     const year = currentYear();
 
-    // filtra logs do ano (pela data comercial)
     const logs = state.logs
       .map((x) => ({ ...x, dayKey: businessDateKey(x.ts) }))
       .filter((x) => Number(x.dayKey.slice(0, 4)) === year)
       .sort((a, b) => a.ts - b.ts);
 
-    // agrupa por dia comercial
     const byDay = new Map();
     for (const e of logs) {
       if (!byDay.has(e.dayKey)) byDay.set(e.dayKey, []);
       byDay.get(e.dayKey).push(e);
     }
 
-    // totais
-    const totalPorPessoa = new Map();
-    const totalPorItem = new Map();
-    let totalGeral = 0;
+    const totalGeral = logs.reduce((s, e) => s + (e.qty || 0), 0);
 
-    for (const e of logs) {
-      totalGeral += e.qty;
-      totalPorPessoa.set(e.person, (totalPorPessoa.get(e.person) || 0) + e.qty);
-      totalPorItem.set(e.item, (totalPorItem.get(e.item) || 0) + e.qty);
-    }
+    let msg = `*Relatório de Vendas Confirmadas*\nAno: *${year}*\nTotal: *${totalGeral}*\n\n`;
 
-    // monta mensagem
-    let msg = `*Extrato Anual (vendas confirmadas)*\nAno: *${year}*\nCorte madrugada: *00:00–05:59 conta no dia anterior*\n\n`;
-    msg += `*Total geral:* ${totalGeral}\n\n`;
-
-    // resumo por pessoa
-    if (totalPorPessoa.size) {
-      msg += `*Resumo por pessoa*\n`;
-      [...totalPorPessoa.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .forEach(([name, qty]) => {
-          msg += `• ${name}: ${qty}\n`;
-        });
-      msg += `\n`;
-    }
-
-    // resumo por item
-    if (totalPorItem.size) {
-      msg += `*Resumo por item*\n`;
-      [...totalPorItem.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .forEach(([item, qty]) => {
-          msg += `• ${item}: ${qty}\n`;
-        });
-      msg += `\n`;
-    }
-
-    // detalhado por dia
-    msg += `*Detalhado (por dia comercial)*\n`;
     const days = [...byDay.keys()].sort();
-    if (!days.length) {
-      msg += `— Sem registros confirmados neste ano —\n\n`;
+
+    // Sem registro: mostra só o DIA (sem frase extra)
+    if (days.length === 0) {
+      const todayKey = businessDateKey(Date.now());
+      msg += `*${formatDateBR(todayKey)}*\n`;
     } else {
       for (const dayKey of days) {
-        msg += `\n*${formatDateBR(dayKey)}*\n`;
+        msg += `*${formatDateBR(dayKey)}*\n`;
         for (const e of byDay.get(dayKey)) {
-          // mostra hora real em que foi confirmado
           msg += `- ${formatTimeBR(e.ts)} • ${e.person} • ${e.item} x${e.qty}\n`;
         }
+        msg += `\n`;
       }
-      msg += `\n`;
     }
 
-    // observações
     msg += `*Observações*\n`;
     if (state.obs.length) {
       state.obs.forEach((o) => {
         msg += `• ${o.text} (${o.time})\n`;
       });
     } else {
-      msg += `Nenhuma observação\n`;
+      msg += `• Nenhuma\n`;
     }
 
     return msg;
@@ -417,7 +381,7 @@ document.addEventListener("DOMContentLoaded", () => {
     renderHistory();
   };
 
-  // Botão do "relatório" agora só mostra/oculta o HISTÓRICO (site simplificado)
+  // Botão 📜: só mostra/oculta o resumo no site
   $("historyToggle").onclick = () => {
     $("historySection").classList.toggle("hidden");
     renderHistory();
@@ -439,7 +403,7 @@ document.addEventListener("DOMContentLoaded", () => {
     renderAll();
   };
 
-  // WhatsApp: envia SEMPRE o relatório detalhado com data/hora e extrato anual
+  // WhatsApp: envia SEMPRE o detalhado por DIA com horário
   $("shareWA").onclick = () => {
     const msg = buildWhatsappReport();
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
